@@ -55,7 +55,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /keys/{keyId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
