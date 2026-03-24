@@ -153,6 +153,16 @@ export default function App() {
   const validateKey = async (key: string) => {
     setIsCheckingKey(true);
     setKeyError('');
+    
+    // Hardcoded Admin Key check
+    if (key === 'DEVADMINKEY@021412') {
+      setIsKeyValid(true);
+      setIsAdmin(true);
+      localStorage.setItem('toolbox_key', key);
+      setIsCheckingKey(false);
+      return;
+    }
+
     try {
       const keyDoc = await getDoc(doc(db, 'keys', key));
       if (keyDoc.exists()) {
@@ -610,63 +620,67 @@ export default function App() {
             {currentView === 'dashboard' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
           </button>
 
-          <div className="px-3 py-2 mt-6 text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
-            Main Feature
-          </div>
-          <button 
-            onClick={() => changeView('bomber')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              currentView === 'bomber' 
-                ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
-            }`}
-          >
-            <Bomb className="w-5 h-5" />
-            <span className="font-medium">SMS Bomber</span>
-            {currentView === 'bomber' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
-          </button>
+          {(isKeyValid || isAdmin) && (
+            <>
+              <div className="px-3 py-2 mt-6 text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
+                Main Feature
+              </div>
+              <button 
+                onClick={() => changeView('bomber')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  currentView === 'bomber' 
+                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
+                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                }`}
+              >
+                <Bomb className="w-5 h-5" />
+                <span className="font-medium">SMS Bomber</span>
+                {currentView === 'bomber' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+              </button>
 
-          <button 
-            onClick={() => changeView('garena')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              currentView === 'garena' 
-                ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
-            }`}
-          >
-            <UserCheck className="w-5 h-5" />
-            <span className="font-medium">Garena Checker</span>
-            {currentView === 'garena' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
-          </button>
+              <button 
+                onClick={() => changeView('garena')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  currentView === 'garena' 
+                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
+                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                }`}
+              >
+                <UserCheck className="w-5 h-5" />
+                <span className="font-medium">Garena Checker</span>
+                {currentView === 'garena' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+              </button>
 
-          <button 
-            onClick={() => changeView('email')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              currentView === 'email' 
-                ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
-            }`}
-          >
-            <Mail className="w-5 h-5" />
-            <span className="font-medium">Email Bomber</span>
-            {currentView === 'email' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
-          </button>
+              <button 
+                onClick={() => changeView('email')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  currentView === 'email' 
+                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
+                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                }`}
+              >
+                <Mail className="w-5 h-5" />
+                <span className="font-medium">Email Bomber</span>
+                {currentView === 'email' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+              </button>
 
-          <button 
-            onClick={() => changeView('upcoming')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              currentView === 'upcoming' 
-                ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
-            }`}
-          >
-            <Rocket className="w-5 h-5" />
-            <span className="font-medium">Upcoming</span>
-            <div className="ml-auto flex items-center gap-1">
-              <span className="text-[8px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded-full">NEW</span>
-              {currentView === 'upcoming' && <ChevronRight className="w-4 h-4 opacity-50" />}
-            </div>
-          </button>
+              <button 
+                onClick={() => changeView('upcoming')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  currentView === 'upcoming' 
+                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
+                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                }`}
+              >
+                <Rocket className="w-5 h-5" />
+                <span className="font-medium">Upcoming</span>
+                <div className="ml-auto flex items-center gap-1">
+                  <span className="text-[8px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded-full">NEW</span>
+                  {currentView === 'upcoming' && <ChevronRight className="w-4 h-4 opacity-50" />}
+                </div>
+              </button>
+            </>
+          )}
 
           <div className="px-3 py-2 mt-6 text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
             System
