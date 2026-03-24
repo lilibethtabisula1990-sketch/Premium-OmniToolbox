@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /keys/{keyId}
+    // Fields:
+    //   - key: string (required) - The key string
+    //   - expiresAt: timestamp (required) - When the key expires
+    //   - status: string (required, enum: ['active', 'used']) - Status of the key
+    //   - usedBy: string (optional) - UID of the user who used the key
+    //
+    // Collection: /users/{userId}
+    // Fields:
+    //   - uid: string (required) - User UID
+    //   - email: string (required, format: email) - User email
+    //   - role: string (required, enum: ['admin', 'user']) - User role
+    //   - activeKey: string (optional) - Currently active key
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "joshleetabisula79@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidKey(data) {
+      return data.key is string && data.key.size() > 0 && data.key.size() < 100 &&
+             data.expiresAt is timestamp &&
+             data.status in ['active', 'used'];
+    }
+
+    function isValidUser(data) {
+      return data.uid is string && data.uid == request.auth.uid &&
+             data.email is string && data.email.size() > 0 &&
+             data.role in ['admin', 'user'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /keys/{keyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "Key": {
+      "title": "Key",
+      "description": "A valid tool access key",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "The key string" },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "When the key expires" },
+        "status": { "type": "string", "enum": ["active", "used"], "description": "Status of the key" },
+        "usedBy": { "type": "string", "description": "UID of the user who used the key" }
+      },
+      "required": ["key", "expiresAt", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and access data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User UID" },
+        "email": { "type": "string", "format": "email", "description": "User email" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User role" },
+        "activeKey": { "type": "string", "description": "Currently active key" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/keys/{keyId}": {
+      "schema": "Key",
+      "description": "Collection of access keys"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    }
+  }
+}
