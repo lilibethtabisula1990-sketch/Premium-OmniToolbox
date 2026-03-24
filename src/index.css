@@ -10,35 +10,35 @@
   --color-brand-secondary: #00E0FF;
   --color-brand-danger: #FF005C;
   --color-brand-warning: #FFD600;
-  --color-surface-dark: #0A0A0B;
+  
+  --color-surface-bg: #FFFFFF;
+  --color-surface-text: #1A1A1A;
+  --color-surface-card: #F8F9FA;
+  --color-surface-border: #E9ECEF;
+}
+
+.dark {
+  --color-surface-bg: #0A0A0B;
+  --color-surface-text: #FFFFFF;
   --color-surface-card: #151518;
   --color-surface-border: #232328;
 }
 
 @layer base {
   body {
-    @apply bg-surface-dark text-white font-sans antialiased;
+    @apply bg-surface-bg text-surface-text font-sans antialiased transition-colors duration-300;
   }
 }
 
 @layer utilities {
   .glass {
-    @apply bg-white/5 backdrop-blur-md border border-white/10;
+    @apply bg-surface-card/80 backdrop-blur-md border border-surface-border;
   }
   .glow-primary {
     @apply shadow-[0_0_20px_rgba(0,255,148,0.2)];
   }
   .glow-danger {
     @apply shadow-[0_0_20px_rgba(255,0,92,0.2)];
-  }
-  .scanline {
-    background: linear-gradient(
-      to bottom,
-      transparent 50%,
-      rgba(0, 0, 0, 0.1) 50%
-    );
-    background-size: 100% 4px;
-    pointer-events: none;
   }
 }
 
