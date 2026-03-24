@@ -1,51 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  ShieldAlert, 
-  CheckCircle2, 
-  XCircle, 
-  Play, 
-  Terminal, 
-  Smartphone,
-  Hash,
-  Zap,
-  Loader2,
-  Settings,
-  Bomb,
-  Menu,
-  X,
-  ChevronRight,
-  ShieldCheck,
-  UserCheck,
-  Lock,
-  MessageCircle,
-  LayoutDashboard,
-  Activity,
-  History,
-  Globe,
-  Cpu,
-  ArrowUpRight,
-  Clock,
-  AlertCircle,
-  Copy,
-  ExternalLink,
-  Server,
-  Database,
-  Wifi,
-  MoreVertical,
-  Search,
-  RefreshCw,
-  Trash2,
-  Rocket,
-  Shield,
-  ZapOff,
-  Sparkles,
-  Mail,
-  LogIn,
-  LogOut,
-  Plus,
-  Key
+  ShieldAlert, CheckCircle2, XCircle, Play, Terminal, Smartphone, Hash, Zap, 
+  Loader2, Settings, Bomb, Menu, X, ChevronRight, ShieldCheck, UserCheck, 
+  Lock, MessageCircle, LayoutDashboard, Activity, History, Globe, Cpu, 
+  ArrowUpRight, Clock, AlertCircle, Copy, ExternalLink, Server, Database, 
+  Wifi, MoreVertical, Search, RefreshCw, Trash2, Rocket, Shield, ZapOff, 
+  Sparkles, Mail, LogIn, LogOut, Plus, Key, BarChart3, Info, LogIn as LogInIcon, PlusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell
+} from 'recharts';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { format } from 'date-fns';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 import { auth, db } from './firebase';
 import { 
   onAuthStateChanged, 
@@ -121,32 +94,46 @@ export default function App() {
   const [adminSuccess, setAdminSuccess] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Check if user is admin
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          setIsAdmin(userDoc.data().role === 'admin');
-        } else {
-          // Create user doc if it doesn't exist
-          await setDoc(doc(db, 'users', user.uid), {
-            email: user.email,
-            role: 'user',
-            createdAt: serverTimestamp()
-          });
-          setIsAdmin(false);
-        }
-        
-        // Check if user has a valid key stored in local storage
-        const storedKey = localStorage.getItem('toolbox_key');
-        if (storedKey) {
-          validateKey(storedKey);
-        }
-      } else {
-        setIsAdmin(false);
-        setIsKeyValid(false);
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      setUser(fbUser);
+      setIsAuthLoading(true);
+      
+      // Master key check overrides everything and is synchronous
+      const storedKey = localStorage.getItem('toolbox_key');
+      if (storedKey === 'DEVADMINKEY@021412') {
+        setIsAdmin(true);
+        setIsKeyValid(true);
+        setIsAuthLoading(false);
+        return;
       }
+
+      let adminStatus = false;
+      
+      if (fbUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+          if (userDoc.exists()) {
+            adminStatus = userDoc.data().role === 'admin';
+          } else {
+            // Check if this is the owner email to auto-grant admin
+            const isOwner = fbUser.email === 'joshleetabisula79@gmail.com';
+            await setDoc(doc(db, 'users', fbUser.uid), {
+              email: fbUser.email,
+              role: isOwner ? 'admin' : 'user',
+              createdAt: serverTimestamp()
+            });
+            if (isOwner) adminStatus = true;
+          }
+        } catch (err) {
+          console.error("Error fetching user doc:", err);
+        }
+      }
+
+      setIsAdmin(adminStatus);
+      if (storedKey) {
+        validateKey(storedKey);
+      }
+      
       setIsAuthLoading(false);
     });
 
@@ -206,11 +193,15 @@ export default function App() {
   };
 
   const generateKey = async () => {
-    if (!isAdmin) return;
+    // Check local admin status first
+    if (!isAdmin) {
+      setAdminError('System Error: Admin privileges not detected.');
+      return;
+    }
     
     // Firestore requires authentication for writes
     if (!user) {
-      setAdminError('Authentication Required: Please "Sign In" with Google to perform database actions.');
+      setAdminError('CRITICAL: You MUST "Sign In" with Google to write to the database. The master key only unlocks the UI.');
       return;
     }
     
@@ -219,11 +210,18 @@ export default function App() {
     setAdminSuccess('');
 
     try {
-      const key = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      // Generate a clean, readable key
+      const prefix = "OMNI-";
+      const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const key = `${prefix}${randomPart}`;
+      
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + newKeyDuration);
       
-      await setDoc(doc(db, 'keys', key), {
+      console.log(`[Admin] Attempting to generate key: ${key}`);
+      
+      const keyRef = doc(db, 'keys', key);
+      await setDoc(keyRef, {
         key,
         expiresAt: Timestamp.fromDate(expiresAt),
         createdAt: serverTimestamp(),
@@ -231,14 +229,14 @@ export default function App() {
         createdBy: user.uid
       });
       
-      setAdminSuccess(`Key generated successfully: ${key.substring(0, 8)}...`);
-      setTimeout(() => setAdminSuccess(''), 5000);
+      setAdminSuccess(`SUCCESS: Key ${key} is now active.`);
+      setTimeout(() => setAdminSuccess(''), 8000);
     } catch (err: any) {
-      console.error("Error generating key:", err);
+      console.error("Firestore Write Error:", err);
       if (err.message.includes('permission-denied') || err.message.includes('insufficient permissions')) {
-        setAdminError('Permission Denied: Your Google account is not authorized as a System Admin in the database.');
+        setAdminError('DATABASE REJECTED: Your Google account is not listed as an Admin in Firestore. Please contact the owner.');
       } else {
-        setAdminError(`Failed to generate key: ${err.message}`);
+        setAdminError(`SYSTEM ERROR: ${err.message}`);
       }
     } finally {
       setIsGeneratingKey(false);
@@ -554,7 +552,8 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-[#F8F9FA] text-[#2D3436] font-sans overflow-hidden">
+    <div className="flex h-screen bg-surface-dark text-white font-sans overflow-hidden selection:bg-brand-primary selection:text-surface-dark">
+      <div className="scanline fixed inset-0 z-50 opacity-10 pointer-events-none" />
       <AnimatePresence>
         {isLoading && (
           <motion.div 
@@ -562,7 +561,7 @@ export default function App() {
             initial={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 1.1, filter: 'blur(20px)' }}
             transition={{ duration: 0.8, ease: "easeInOut" }}
-            className="fixed inset-0 z-[100] bg-[#0A0A0A] flex flex-col items-center justify-center overflow-hidden"
+            className="fixed inset-0 z-[100] bg-surface-dark flex flex-col items-center justify-center overflow-hidden"
           >
             {/* Background Grid Effect */}
             <div className="absolute inset-0 opacity-5 pointer-events-none" 
@@ -579,25 +578,25 @@ export default function App() {
                 <motion.div 
                   animate={{ rotate: 360 }}
                   transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                  className="absolute -inset-4 border border-white/10 rounded-full"
+                  className="absolute -inset-4 border border-brand-primary/20 rounded-full"
                 />
                 <motion.div 
                   animate={{ rotate: -360 }}
                   transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-                  className="absolute -inset-8 border border-white/5 rounded-full border-dashed"
+                  className="absolute -inset-8 border border-brand-secondary/10 rounded-full border-dashed"
                 />
-                <div className="bg-white p-6 rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.1)] relative z-10">
-                  <Zap className="w-16 h-16 text-[#0A0A0A]" />
+                <div className="bg-surface-card p-6 rounded-3xl shadow-[0_0_50px_rgba(0,255,148,0.1)] relative z-10 border border-white/5">
+                  <Zap className="w-16 h-16 text-brand-primary animate-pulse-glow" />
                 </div>
               </div>
 
               <h1 className="text-white text-4xl font-display font-bold tracking-tighter mb-4 flex items-center gap-2">
-                Omni<span className="text-white/40">Toolbox</span>
+                Omni<span className="text-brand-primary">Toolbox</span>
               </h1>
 
               <div className="flex flex-col items-center gap-4">
                 <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-full border border-white/10 backdrop-blur-sm">
-                  <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+                  <RefreshCw className="w-4 h-4 text-brand-secondary animate-spin" />
                   <span className="text-[10px] font-mono font-bold text-white/60 uppercase tracking-widest">
                     Establishing Secure Link...
                   </span>
@@ -618,11 +617,11 @@ export default function App() {
                   initial={{ width: 0 }}
                   animate={{ width: '100%' }}
                   transition={{ duration: 2.5, ease: "easeInOut" }}
-                  className="h-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+                  className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary shadow-[0_0_15px_rgba(0,255,148,0.5)]"
                 />
               </div>
               <div className="flex items-center gap-6 opacity-20">
-                <p className="text-[9px] font-bold text-white uppercase tracking-[0.3em]">v2.4.0 STABLE</p>
+                <p className="text-[9px] font-bold text-white uppercase tracking-[0.3em]">v2.5.0 STABLE</p>
                 <div className="w-1 h-1 bg-white rounded-full" />
                 <p className="text-[9px] font-bold text-white uppercase tracking-[0.3em]">ENCRYPTED</p>
               </div>
@@ -635,125 +634,160 @@ export default function App() {
       <motion.aside 
         initial={false}
         animate={{ width: isSidebarOpen ? 280 : 0, opacity: isSidebarOpen ? 1 : 0 }}
-        className="bg-white border-r border-[#E9ECEF] flex flex-col relative z-20"
+        className="bg-surface-card border-r border-white/5 flex flex-col relative z-20 backdrop-blur-xl"
       >
-        <div className="p-6 border-b border-[#E9ECEF] flex items-center justify-between">
+        <div className="p-6 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-[#141414] p-2 rounded-lg shadow-lg shadow-black/20">
-              <Zap className="w-5 h-5 text-white" />
+            <div className="bg-brand-primary p-2 rounded-lg shadow-[0_0_15px_rgba(0,255,148,0.3)]">
+              <Zap className="w-5 h-5 text-surface-dark" />
             </div>
-            <span className="font-display font-bold tracking-tight text-xl">OmniToolbox</span>
+            <span className="font-display font-bold tracking-tight text-xl text-white">Omni<span className="text-brand-primary">Toolbox</span></span>
           </div>
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+          <div className="w-2 h-2 bg-brand-primary rounded-full animate-pulse shadow-[0_0_8px_rgba(0,255,148,0.6)]" />
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <div className="px-3 py-2 text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
+          <div className="px-3 py-2 text-[10px] font-bold text-white/30 uppercase tracking-[0.3em]">
             Overview
           </div>
           <button 
             onClick={() => changeView('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+            className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
               currentView === 'dashboard' 
-                ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                : 'text-white/50 hover:bg-white/5 hover:text-white'
             }`}
           >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="font-medium">Dashboard</span>
-            {currentView === 'dashboard' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+            <LayoutDashboard className={`w-5 h-5 transition-transform duration-300 ${currentView === 'dashboard' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm">Dashboard</span>
+            {currentView === 'dashboard' && (
+              <motion.div 
+                layoutId="active-pill"
+                className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+              />
+            )}
           </button>
 
           {(isKeyValid || isAdmin) && (
             <>
-              <div className="px-3 py-2 mt-6 text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
+              <div className="px-3 py-2 mt-6 text-[10px] font-bold text-white/30 uppercase tracking-[0.3em]">
                 Main Feature
               </div>
               <button 
                 onClick={() => changeView('bomber')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
                   currentView === 'bomber' 
-                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                    : 'text-white/50 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <Bomb className="w-5 h-5" />
-                <span className="font-medium">SMS Bomber</span>
-                {currentView === 'bomber' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+                <Bomb className={`w-5 h-5 transition-transform duration-300 ${currentView === 'bomber' ? 'scale-110' : 'group-hover:scale-110'}`} />
+                <span className="font-medium text-sm">SMS Bomber</span>
+                {currentView === 'bomber' && (
+                  <motion.div 
+                    layoutId="active-pill"
+                    className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+                  />
+                )}
               </button>
 
               <button 
                 onClick={() => changeView('garena')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
                   currentView === 'garena' 
-                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                    : 'text-white/50 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <UserCheck className="w-5 h-5" />
-                <span className="font-medium">Garena Checker</span>
-                {currentView === 'garena' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+                <UserCheck className={`w-5 h-5 transition-transform duration-300 ${currentView === 'garena' ? 'scale-110' : 'group-hover:scale-110'}`} />
+                <span className="font-medium text-sm">Garena Checker</span>
+                {currentView === 'garena' && (
+                  <motion.div 
+                    layoutId="active-pill"
+                    className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+                  />
+                )}
               </button>
 
               <button 
                 onClick={() => changeView('email')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
                   currentView === 'email' 
-                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                    : 'text-white/50 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <Mail className="w-5 h-5" />
-                <span className="font-medium">Email Bomber</span>
-                {currentView === 'email' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+                <Mail className={`w-5 h-5 transition-transform duration-300 ${currentView === 'email' ? 'scale-110' : 'group-hover:scale-110'}`} />
+                <span className="font-medium text-sm">Email Bomber</span>
+                {currentView === 'email' && (
+                  <motion.div 
+                    layoutId="active-pill"
+                    className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+                  />
+                )}
               </button>
 
               <button 
                 onClick={() => changeView('upcoming')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
                   currentView === 'upcoming' 
-                    ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                    : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                    : 'text-white/50 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <Rocket className="w-5 h-5" />
-                <span className="font-medium">Upcoming</span>
-                <div className="ml-auto flex items-center gap-1">
-                  <span className="text-[8px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded-full">NEW</span>
-                  {currentView === 'upcoming' && <ChevronRight className="w-4 h-4 opacity-50" />}
+                <Rocket className={`w-5 h-5 transition-transform duration-300 ${currentView === 'upcoming' ? 'scale-110' : 'group-hover:scale-110'}`} />
+                <span className="font-medium text-sm">Upcoming</span>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-[8px] font-bold bg-brand-secondary text-surface-dark px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(0,209,255,0.3)]">NEW</span>
+                  {currentView === 'upcoming' && (
+                    <motion.div 
+                      layoutId="active-pill"
+                      className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+                    />
+                  )}
                 </div>
               </button>
             </>
           )}
 
-          <div className="px-3 py-2 mt-6 text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
+          <div className="px-3 py-2 mt-6 text-[10px] font-bold text-white/30 uppercase tracking-[0.3em]">
             System
           </div>
           <button 
             onClick={() => changeView('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+            className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
               currentView === 'settings' 
-                ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                : 'text-white/50 hover:bg-white/5 hover:text-white'
             }`}
           >
-            <Settings className="w-5 h-5" />
-            <span className="font-medium">Settings</span>
-            {currentView === 'settings' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+            <Settings className={`w-5 h-5 transition-transform duration-300 ${currentView === 'settings' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm">Settings</span>
+            {currentView === 'settings' && (
+              <motion.div 
+                layoutId="active-pill"
+                className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+              />
+            )}
           </button>
 
           {isAdmin && (
             <button 
               onClick={() => changeView('admin')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              className={`w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative overflow-hidden ${
                 currentView === 'admin' 
-                  ? 'bg-[#141414] text-white shadow-lg shadow-[#141414]/10' 
-                  : 'text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]'
+                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                  : 'text-white/50 hover:bg-white/5 hover:text-white'
               }`}
             >
-              <Shield className="w-5 h-5" />
-              <span className="font-medium">Admin Panel</span>
-              {currentView === 'admin' && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+              <Shield className={`w-5 h-5 transition-transform duration-300 ${currentView === 'admin' ? 'scale-110' : 'group-hover:scale-110'}`} />
+              <span className="font-medium text-sm">Admin Panel</span>
+              {currentView === 'admin' && (
+                <motion.div 
+                  layoutId="active-pill"
+                  className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-brand-primary rounded-r-full"
+                />
+              )}
             </button>
           )}
 
@@ -761,43 +795,46 @@ export default function App() {
             href="https://t.me/ItsMeJeff"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-[#6C757D] hover:bg-[#F1F3F5] hover:text-[#141414]"
+            className="w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-white/50 hover:bg-white/5 hover:text-white"
           >
-            <MessageCircle className="w-5 h-5" />
-            <span className="font-medium">Contact Support</span>
-            <ChevronRight className="w-4 h-4 ml-auto opacity-50" />
+            <MessageCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            <span className="font-medium text-sm">Contact Support</span>
+            <ExternalLink className="w-3 h-3 ml-auto opacity-30" />
           </a>
         </nav>
 
-        <div className="p-4 border-t border-[#E9ECEF]">
+        <div className="p-4 border-t border-white/5 bg-white/2 backdrop-blur-md">
           {user ? (
-            <div className="bg-[#F8F9FA] p-4 rounded-xl flex flex-col gap-3">
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                <img 
-                  src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
-                  alt="Avatar" 
-                  className="w-8 h-8 rounded-full border border-[#E9ECEF]" 
-                />
+                <div className="relative">
+                  <img 
+                    src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
+                    alt="Avatar" 
+                    className="w-10 h-10 rounded-xl border border-white/10" 
+                  />
+                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-brand-primary rounded-full border-2 border-surface-card" />
+                </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold truncate">{user.displayName}</p>
-                  <p className="text-[10px] text-[#ADB5BD] truncate uppercase tracking-widest">{isAdmin ? 'Administrator' : 'User'}</p>
+                  <p className="text-xs font-bold text-white truncate">{user.displayName}</p>
+                  <p className="text-[9px] text-brand-primary font-mono uppercase tracking-widest">{isAdmin ? 'Administrator' : 'Verified User'}</p>
                 </div>
               </div>
               <button 
                 onClick={handleLogout}
-                className="w-full py-2 bg-white border border-[#E9ECEF] text-[#141414] rounded-lg text-[10px] font-bold hover:bg-[#F1F3F5] transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-white/5 border border-white/10 text-white/70 rounded-xl text-[10px] font-bold hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 transition-all flex items-center justify-center gap-2"
               >
                 <LogOut className="w-3 h-3" />
-                Sign Out
+                TERMINATE SESSION
               </button>
             </div>
           ) : (
             <button 
               onClick={handleLogin}
-              className="w-full py-3 bg-[#141414] text-white rounded-xl font-bold text-xs shadow-lg shadow-black/10 hover:bg-[#2D3436] transition-all flex items-center justify-center gap-2"
+              className="w-full py-4 bg-brand-primary text-surface-dark rounded-2xl font-bold text-xs shadow-[0_0_20px_rgba(0,255,148,0.2)] hover:shadow-[0_0_30px_rgba(0,255,148,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <LogIn className="w-4 h-4" />
-              Access System
+              ESTABLISH CONNECTION
             </button>
           )}
         </div>
@@ -1504,85 +1541,130 @@ export default function App() {
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={`mt-8 p-6 rounded-2xl border-2 ${
-                        garenaResult.status === 'SUCCESS' ? 'bg-white border-green-500/20 shadow-xl shadow-green-500/5' : 'bg-white border-red-500/20 shadow-xl shadow-red-500/5'
-                      }`}
+                      className={cn(
+                        "mt-8 p-8 rounded-3xl border backdrop-blur-md",
+                        garenaResult.status === 'SUCCESS' 
+                          ? 'bg-brand-primary/5 border-brand-primary/20 shadow-lg shadow-brand-primary/5' 
+                          : 'bg-red-500/5 border-red-500/20 shadow-lg shadow-red-500/5'
+                      )}
                     >
                       {garenaResult.status === 'SUCCESS' ? (
-                        <div className="space-y-6">
+                        <div className="space-y-8">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
+                            <div className="flex items-center gap-5">
+                              <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary shadow-[0_0_15px_rgba(0,255,148,0.2)]">
                                 <UserCheck className="w-8 h-8" />
                               </div>
                               <div>
-                                <h4 className="text-2xl font-display font-bold text-[#141414]">{garenaResult.data.nickname}</h4>
-                                <p className="text-sm text-[#6C757D] font-medium">UID: {garenaResult.data.uid}</p>
+                                <h4 className="text-2xl font-bold text-white flex items-center gap-3">
+                                  {garenaResult.data.nickname}
+                                  {garenaResult.data.is_clean && (
+                                    <span className="text-[10px] bg-brand-primary/20 text-brand-primary px-2 py-0.5 rounded-full border border-brand-primary/30">CLEAN</span>
+                                  )}
+                                </h4>
+                                <p className="text-sm text-white/50 font-mono tracking-wider">UID: {garenaResult.data.uid}</p>
                               </div>
                             </div>
-                            <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(`Nickname: ${garenaResult.data.nickname}\nUID: ${garenaResult.data.uid}`);
-                              }}
-                              className="p-2 hover:bg-[#F1F3F5] rounded-xl transition-colors text-[#6C757D]"
-                              title="Copy Info"
-                            >
-                              <Copy className="w-5 h-5" />
-                            </button>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`Nickname: ${garenaResult.data.nickname}\nUID: ${garenaResult.data.uid}\nAccount: ${garenaResult.data.account}`);
+                                }}
+                                className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-white/50 hover:text-white border border-white/5"
+                                title="Copy Full Info"
+                              >
+                                <Copy className="w-5 h-5" />
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-[#F8F9FA] rounded-xl border border-[#E9ECEF]">
-                              <p className="text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest mb-1">Email Status</p>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${garenaResult.data.email_status === 1 ? 'bg-green-500' : 'bg-orange-500'}`} />
-                                <p className="font-bold text-sm">{garenaResult.data.email_status === 1 ? 'Verified' : 'Unverified'}</p>
-                              </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="p-4 bg-white/2 rounded-2xl border border-white/5">
+                              <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                                <Mail className="w-3 h-3" />
+                                Email
+                              </p>
+                              <p className="font-bold text-sm text-white truncate" title={garenaResult.data.email}>{garenaResult.data.email || 'N/A'}</p>
+                              <p className={cn(
+                                "text-[9px] font-bold mt-1",
+                                garenaResult.data.email_status === 'Verified' ? 'text-brand-primary' : 'text-orange-400'
+                              )}>{garenaResult.data.email_status}</p>
                             </div>
-                            <div className="p-4 bg-[#F8F9FA] rounded-xl border border-[#E9ECEF]">
-                              <p className="text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest mb-1">Mobile Status</p>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${garenaResult.data.mobile_status === 1 ? 'bg-green-500' : 'bg-orange-500'}`} />
-                                <p className="font-bold text-sm">{garenaResult.data.mobile_status === 1 ? 'Verified' : 'Unverified'}</p>
-                              </div>
+                            <div className="p-4 bg-white/2 rounded-2xl border border-white/5">
+                              <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                                <Smartphone className="w-3 h-3" />
+                                Mobile
+                              </p>
+                              <p className="font-bold text-sm text-white">{garenaResult.data.mobile_status}</p>
+                              <div className={cn(
+                                "w-1.5 h-1.5 rounded-full mt-2",
+                                garenaResult.data.mobile_status === 'Bound' ? 'bg-brand-primary shadow-[0_0_5px_rgba(0,255,148,0.5)]' : 'bg-white/10'
+                              )} />
+                            </div>
+                            <div className="p-4 bg-white/2 rounded-2xl border border-white/5">
+                              <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                                <Database className="w-3 h-3" />
+                                Shells
+                              </p>
+                              <p className="font-bold text-xl text-brand-primary">{garenaResult.data.shell_balance}</p>
+                            </div>
+                            <div className="p-4 bg-white/2 rounded-2xl border border-white/5">
+                              <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                                <ShieldCheck className="w-3 h-3" />
+                                Status
+                              </p>
+                              <p className={cn(
+                                "font-bold text-sm",
+                                garenaResult.data.is_clean ? 'text-brand-primary' : 'text-red-400'
+                              )}>{garenaResult.data.is_clean ? 'CLEAN' : 'NOT CLEAN'}</p>
                             </div>
                           </div>
 
                           {garenaResult.data.codm && (
-                            <div className="p-6 bg-[#141414] rounded-2xl text-white relative overflow-hidden">
+                            <div className="p-6 bg-white/5 rounded-2xl border border-white/10 relative overflow-hidden group">
+                              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Rocket className="w-24 h-24 rotate-12" />
+                              </div>
                               <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-4">
-                                  <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">CODM Profile Detected</p>
+                                <div className="flex items-center justify-between mb-6">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">CODM Profile Detected</p>
+                                  </div>
+                                  <span className="text-[10px] font-bold bg-white/10 px-2 py-1 rounded border border-white/10 text-white/70">
+                                    {garenaResult.data.codm.region}
+                                  </span>
                                 </div>
-                                <div className="grid grid-cols-3 gap-4">
+                                <div className="grid grid-cols-3 gap-6">
                                   <div>
-                                    <p className="text-[10px] font-bold text-white/40 uppercase mb-1">Nickname</p>
-                                    <p className="font-bold text-sm truncate">{garenaResult.data.codm.nickname}</p>
+                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Nickname</p>
+                                    <p className="font-bold text-base text-white truncate">{garenaResult.data.codm.nickname}</p>
                                   </div>
                                   <div>
-                                    <p className="text-[10px] font-bold text-white/40 uppercase mb-1">Level</p>
-                                    <p className="font-bold text-sm">{garenaResult.data.codm.level}</p>
+                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Level</p>
+                                    <div className="flex items-end gap-1">
+                                      <p className="font-bold text-2xl text-brand-primary leading-none">{garenaResult.data.codm.level}</p>
+                                      <span className="text-[10px] text-white/30 mb-0.5">/ 400</span>
+                                    </div>
                                   </div>
                                   <div>
-                                    <p className="text-[10px] font-bold text-white/40 uppercase mb-1">EXP</p>
-                                    <p className="font-bold text-sm">{garenaResult.data.codm.exp}</p>
+                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">In-Game UID</p>
+                                    <p className="font-mono text-xs text-white/70 truncate">{garenaResult.data.codm.uid}</p>
                                   </div>
                                 </div>
                               </div>
-                              <Smartphone className="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 rotate-12" />
                             </div>
                           )}
                         </div>
                       ) : (
-                        <div className="flex items-center gap-4 text-red-600">
-                          <div className="bg-red-50 p-3 rounded-xl">
-                            <XCircle className="w-6 h-6" />
+                        <div className="flex flex-col items-center text-center py-4">
+                          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 mb-4 border border-red-500/20">
+                            <XCircle className="w-8 h-8" />
                           </div>
-                          <div>
-                            <p className="font-bold">Check Failed</p>
-                            <p className="text-sm opacity-80">{garenaResult.error}</p>
-                          </div>
+                          <h4 className="text-xl font-bold text-white mb-2">Check Failed</h4>
+                          <p className="text-white/60 font-mono text-sm bg-black/20 p-3 rounded-lg border border-white/5 w-full">
+                            {garenaResult.error}
+                          </p>
                         </div>
                       )}
                     </motion.div>
@@ -1597,25 +1679,37 @@ export default function App() {
                 exit={{ opacity: 0, y: -10 }}
                 className="max-w-6xl mx-auto space-y-8"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                   <div>
-                    <h2 className="text-3xl font-display font-bold">Admin Control Panel</h2>
-                    <p className="text-[#6C757D]">Manage system access keys and monitor usage.</p>
+                    <h2 className="text-3xl font-display font-bold text-white flex items-center gap-3">
+                      <Shield className="w-8 h-8 text-brand-primary" />
+                      Admin <span className="text-brand-primary">Control Panel</span>
+                    </h2>
+                    <p className="text-white/50 font-medium mt-1">Manage system access keys and monitor usage metrics.</p>
                   </div>
                   <div className="flex items-center gap-4">
                     {!user && (
-                      <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-2 flex items-center gap-2 text-orange-600 text-[10px] font-bold uppercase tracking-widest">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        Sign In Required for Database Actions
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="bg-brand-secondary/10 border border-brand-secondary/20 rounded-xl px-4 py-2 flex items-center gap-2 text-brand-secondary text-[10px] font-bold uppercase tracking-widest">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Sign In Required for Database Actions
+                        </div>
+                        <button 
+                          onClick={handleLogin}
+                          className="px-4 py-2 bg-brand-primary text-surface-dark rounded-lg text-[10px] font-bold hover:bg-brand-primary/90 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(0,255,148,0.2)]"
+                        >
+                          <LogIn className="w-3 h-3" />
+                          Sign In with Google
+                        </button>
                       </div>
                     )}
-                    <div className="bg-white border border-[#E9ECEF] rounded-xl p-4 flex items-center gap-4">
+                    <div className="bg-surface-card border border-white/5 rounded-2xl p-4 flex items-center gap-4 backdrop-blur-md">
                       <div>
-                        <p className="text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">Total Keys</p>
-                        <p className="text-xl font-bold">{allKeys.length}</p>
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Total Keys</p>
+                        <p className="text-2xl font-display font-bold text-white">{allKeys.length}</p>
                       </div>
-                      <div className="w-10 h-10 bg-[#141414] rounded-lg flex items-center justify-center">
-                        <Key className="w-5 h-5 text-white" />
+                      <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center border border-brand-primary/20">
+                        <Key className="w-6 h-6 text-brand-primary" />
                       </div>
                     </div>
                   </div>
@@ -1623,104 +1717,151 @@ export default function App() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white rounded-2xl border border-[#E9ECEF] p-8 shadow-sm">
-                      <h3 className="text-lg font-bold mb-6">Generate New Key</h3>
-                      <div className="space-y-6">
+                    <div className="bg-surface-card rounded-3xl border border-white/5 p-8 backdrop-blur-md relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-brand-primary/10 transition-colors" />
+                      <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                        <PlusCircle className="w-5 h-5 text-brand-primary" />
+                        Generate New Key
+                      </h3>
+                      <div className="space-y-6 relative z-10">
                         <div>
-                          <label className="block text-[10px] font-bold mb-2 text-[#ADB5BD] uppercase tracking-widest">Duration (Hours)</label>
+                          <label className="block text-[10px] font-bold mb-2 text-white/30 uppercase tracking-[0.2em]">Duration (Hours)</label>
                           <select 
                             value={newKeyDuration}
                             onChange={(e) => setNewKeyDuration(parseInt(e.target.value))}
-                            className="w-full bg-[#F8F9FA] border border-[#E9ECEF] rounded-xl py-4 px-4 focus:outline-none focus:border-[#141414] font-bold"
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-4 focus:outline-none focus:border-brand-primary text-white font-bold transition-all appearance-none cursor-pointer"
                           >
-                            <option value={1}>1 Hour</option>
-                            <option value={12}>12 Hours</option>
-                            <option value={24}>24 Hours</option>
-                            <option value={168}>1 Week</option>
-                            <option value={720}>1 Month</option>
-                            <option value={8760}>1 Year</option>
+                            <option value={1} className="bg-surface-dark">1 Hour (Trial)</option>
+                            <option value={24} className="bg-surface-dark">24 Hours (Daily)</option>
+                            <option value={168} className="bg-surface-dark">168 Hours (Weekly)</option>
+                            <option value={720} className="bg-surface-dark">720 Hours (Monthly)</option>
+                            <option value={8760} className="bg-surface-dark">8760 Hours (Lifetime)</option>
                           </select>
                         </div>
+                        
                         <button 
                           onClick={generateKey}
-                          disabled={isGeneratingKey}
-                          className="w-full py-4 bg-[#141414] text-white rounded-xl font-bold hover:bg-[#2D3436] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                          disabled={isGeneratingKey || !user}
+                          className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-3 relative overflow-hidden ${
+                            isGeneratingKey || !user
+                              ? 'bg-white/5 text-white/20 cursor-not-allowed border border-white/5' 
+                              : 'bg-brand-primary text-surface-dark shadow-[0_0_20px_rgba(0,255,148,0.2)] hover:shadow-[0_0_30px_rgba(0,255,148,0.4)] hover:scale-[1.02] active:scale-[0.98]'
+                          }`}
                         >
-                          {isGeneratingKey ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                          {isGeneratingKey ? 'Generating...' : 'Generate Key'}
+                          {isGeneratingKey ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin" />
+                              PROCESSING...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-5 h-5" />
+                              GENERATE ACCESS KEY
+                            </>
+                          )}
                         </button>
+
                         {adminError && (
-                          <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
-                            <AlertCircle className="w-3.5 h-3.5" />
+                          <motion.div 
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-3"
+                          >
+                            <AlertCircle className="w-4 h-4" />
                             {adminError}
-                          </div>
+                          </motion.div>
                         )}
                         {adminSuccess && (
-                          <div className="p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-2 text-green-600 text-[10px] font-bold uppercase tracking-widest">
-                            <ShieldCheck className="w-3.5 h-3.5" />
+                          <motion.div 
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="p-4 rounded-xl bg-brand-primary/10 border border-brand-primary/20 text-brand-primary text-xs font-bold flex items-center gap-3"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
                             {adminSuccess}
-                          </div>
+                          </motion.div>
                         )}
                       </div>
                     </div>
                   </div>
 
                   <div className="lg:col-span-2">
-                    <div className="bg-white rounded-2xl border border-[#E9ECEF] overflow-hidden shadow-sm">
-                      <div className="p-6 border-b border-[#E9ECEF] flex items-center justify-between bg-[#F8F9FA]">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest">Active Access Keys</h3>
-                        <RefreshCw className="w-4 h-4 text-[#ADB5BD]" />
+                    <div className="bg-surface-card rounded-3xl border border-white/5 overflow-hidden backdrop-blur-md">
+                      <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                          <History className="w-5 h-5 text-brand-primary" />
+                          Active Access Keys
+                        </h3>
+                        <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
+                          <div className="w-2 h-2 bg-brand-primary rounded-full animate-pulse" />
+                          <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Live Monitor</span>
+                        </div>
                       </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left">
+                      <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="border-b border-[#E9ECEF] text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">
-                              <th className="px-6 py-4">Key</th>
-                              <th className="px-6 py-4">Expires</th>
-                              <th className="px-6 py-4">Status</th>
-                              <th className="px-6 py-4 text-right">Actions</th>
+                            <tr className="bg-white/2">
+                              <th className="px-8 py-4 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Key ID</th>
+                              <th className="px-8 py-4 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Expires</th>
+                              <th className="px-8 py-4 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Status</th>
+                              <th className="px-8 py-4 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-[#E9ECEF]">
-                            {allKeys.map((k) => (
-                              <tr key={k.id} className="hover:bg-[#F8F9FA] transition-colors">
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-2">
-                                    <code className="bg-[#F1F3F5] px-2 py-1 rounded text-xs font-mono">{k.key.substring(0, 8)}...</code>
-                                    <button 
-                                      onClick={() => navigator.clipboard.writeText(k.key)}
-                                      className="p-1 hover:bg-[#E9ECEF] rounded transition-colors"
-                                    >
-                                      <Copy className="w-3 h-3 text-[#ADB5BD]" />
-                                    </button>
+                          <tbody className="divide-y divide-white/5">
+                            {allKeys.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-8 py-12 text-center">
+                                  <div className="flex flex-col items-center gap-3 opacity-20">
+                                    <Key className="w-12 h-12" />
+                                    <p className="text-sm font-bold uppercase tracking-widest">No keys found in database</p>
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 text-xs font-medium">
-                                  {k.expiresAt?.toDate().toLocaleString()}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`text-[9px] font-bold px-2 py-1 rounded-full ${
-                                    k.expiresAt?.toMillis() > Date.now() ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                                  }`}>
-                                    {k.expiresAt?.toMillis() > Date.now() ? 'ACTIVE' : 'EXPIRED'}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                  <button 
-                                    onClick={() => revokeKey(k.id)}
-                                    className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </td>
                               </tr>
-                            ))}
-                            {allKeys.length === 0 && (
-                              <tr>
-                                <td colSpan={4} className="px-6 py-12 text-center text-[#ADB5BD] font-medium">
-                                  No keys generated yet.
-                                </td>
-                              </tr>
+                            ) : (
+                              allKeys.map((k) => {
+                                const isExpired = k.expiresAt?.toMillis() <= Date.now();
+                                return (
+                                  <tr key={k.id} className="group hover:bg-white/2 transition-colors">
+                                    <td className="px-8 py-5">
+                                      <div className="flex items-center gap-3">
+                                        <div className={`w-2 h-2 rounded-full ${isExpired ? 'bg-red-500' : 'bg-brand-primary'} shadow-[0_0_8px_rgba(0,255,148,0.3)]`} />
+                                        <div className="flex items-center gap-2">
+                                          <code className="bg-white/5 px-2 py-1 rounded text-xs font-mono text-white/70">{k.key.substring(0, 8)}...</code>
+                                          <button 
+                                            onClick={() => navigator.clipboard.writeText(k.key)}
+                                            className="p-1 hover:bg-white/10 rounded transition-colors"
+                                          >
+                                            <Copy className="w-3 h-3 text-white/30" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                      <span className="text-xs text-white/50 font-medium">
+                                        {k.expiresAt?.toDate().toLocaleString()}
+                                      </span>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                      <span className={`text-[9px] font-bold px-2 py-1 rounded-full border ${
+                                        isExpired 
+                                          ? 'bg-red-500/10 border-red-500/20 text-red-500' 
+                                          : 'bg-brand-primary/10 border-brand-primary/20 text-brand-primary'
+                                      }`}>
+                                        {isExpired ? 'EXPIRED' : 'ACTIVE'}
+                                      </span>
+                                    </td>
+                                    <td className="px-8 py-5 text-right">
+                                      <button 
+                                        onClick={() => revokeKey(k.id)}
+                                        className="p-2 text-white/20 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                        title="Revoke Key"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
                             )}
                           </tbody>
                         </table>

@@ -5,4 +5,48 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-brand-primary: #00FF94;
+  --color-brand-secondary: #00E0FF;
+  --color-brand-danger: #FF005C;
+  --color-brand-warning: #FFD600;
+  --color-surface-dark: #0A0A0B;
+  --color-surface-card: #151518;
+  --color-surface-border: #232328;
+}
+
+@layer base {
+  body {
+    @apply bg-surface-dark text-white font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/5 backdrop-blur-md border border-white/10;
+  }
+  .glow-primary {
+    @apply shadow-[0_0_20px_rgba(0,255,148,0.2)];
+  }
+  .glow-danger {
+    @apply shadow-[0_0_20px_rgba(255,0,92,0.2)];
+  }
+  .scanline {
+    background: linear-gradient(
+      to bottom,
+      transparent 50%,
+      rgba(0, 0, 0, 0.1) 50%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite ease-in-out;
 }
