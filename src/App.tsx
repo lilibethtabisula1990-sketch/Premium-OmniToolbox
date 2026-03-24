@@ -116,6 +116,9 @@ export default function App() {
   // Admin Panel States
   const [allKeys, setAllKeys] = useState<any[]>([]);
   const [newKeyDuration, setNewKeyDuration] = useState(24); // hours
+  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [adminSuccess, setAdminSuccess] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -204,22 +207,63 @@ export default function App() {
 
   const generateKey = async () => {
     if (!isAdmin) return;
-    const key = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + newKeyDuration);
     
-    await setDoc(doc(db, 'keys', key), {
-      key,
-      expiresAt: Timestamp.fromDate(expiresAt),
-      createdAt: serverTimestamp(),
-      status: 'active',
-      createdBy: user?.uid
-    });
+    // Firestore requires authentication for writes
+    if (!user) {
+      setAdminError('Authentication Required: Please "Sign In" with Google to perform database actions.');
+      return;
+    }
+    
+    setIsGeneratingKey(true);
+    setAdminError('');
+    setAdminSuccess('');
+
+    try {
+      const key = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + newKeyDuration);
+      
+      await setDoc(doc(db, 'keys', key), {
+        key,
+        expiresAt: Timestamp.fromDate(expiresAt),
+        createdAt: serverTimestamp(),
+        status: 'active',
+        createdBy: user.uid
+      });
+      
+      setAdminSuccess(`Key generated successfully: ${key.substring(0, 8)}...`);
+      setTimeout(() => setAdminSuccess(''), 5000);
+    } catch (err: any) {
+      console.error("Error generating key:", err);
+      if (err.message.includes('permission-denied') || err.message.includes('insufficient permissions')) {
+        setAdminError('Permission Denied: Your Google account is not authorized as a System Admin in the database.');
+      } else {
+        setAdminError(`Failed to generate key: ${err.message}`);
+      }
+    } finally {
+      setIsGeneratingKey(false);
+    }
   };
 
   const revokeKey = async (keyId: string) => {
     if (!isAdmin) return;
-    await deleteDoc(doc(db, 'keys', keyId));
+    if (!user) {
+      setAdminError('Authentication Required: Please "Sign In" with Google to perform database actions.');
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'keys', keyId));
+      setAdminSuccess('Key revoked successfully.');
+      setTimeout(() => setAdminSuccess(''), 3000);
+    } catch (err: any) {
+      console.error("Error revoking key:", err);
+      if (err.message.includes('permission-denied') || err.message.includes('insufficient permissions')) {
+        setAdminError('Permission Denied: Your Google account is not authorized to delete keys.');
+      } else {
+        setAdminError(`Failed to revoke key: ${err.message}`);
+      }
+    }
   };
 
   useEffect(() => {
@@ -1559,6 +1603,12 @@ export default function App() {
                     <p className="text-[#6C757D]">Manage system access keys and monitor usage.</p>
                   </div>
                   <div className="flex items-center gap-4">
+                    {!user && (
+                      <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-2 flex items-center gap-2 text-orange-600 text-[10px] font-bold uppercase tracking-widest">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        Sign In Required for Database Actions
+                      </div>
+                    )}
                     <div className="bg-white border border-[#E9ECEF] rounded-xl p-4 flex items-center gap-4">
                       <div>
                         <p className="text-[10px] font-bold text-[#ADB5BD] uppercase tracking-widest">Total Keys</p>
@@ -1593,11 +1643,24 @@ export default function App() {
                         </div>
                         <button 
                           onClick={generateKey}
-                          className="w-full py-4 bg-[#141414] text-white rounded-xl font-bold hover:bg-[#2D3436] transition-all flex items-center justify-center gap-3"
+                          disabled={isGeneratingKey}
+                          className="w-full py-4 bg-[#141414] text-white rounded-xl font-bold hover:bg-[#2D3436] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                         >
-                          <Plus className="w-5 h-5" />
-                          Generate Key
+                          {isGeneratingKey ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                          {isGeneratingKey ? 'Generating...' : 'Generate Key'}
                         </button>
+                        {adminError && (
+                          <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-[10px] font-bold uppercase tracking-widest">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {adminError}
+                          </div>
+                        )}
+                        {adminSuccess && (
+                          <div className="p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-2 text-green-600 text-[10px] font-bold uppercase tracking-widest">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {adminSuccess}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
